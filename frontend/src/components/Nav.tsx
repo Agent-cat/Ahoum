@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useAuth } from "@/src/auth";
 import { Button } from "@/src/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/src/components/ui/avatar";
-import { Calendar, LogOut, User, Ticket } from "lucide-react";
+import { Calendar, LogOut, User, Ticket, LayoutDashboard } from "lucide-react";
 
 export function Nav() {
   const { user, ready, logout } = useAuth();
@@ -39,6 +39,14 @@ export function Nav() {
               <Link href="/bookings">
                 <Button variant="ghost" size="sm" className="text-zinc-600 hover:text-zinc-900">
                   My Bookings
+                </Button>
+              </Link>
+            )}
+            {ready && user?.role === "creator" && (
+              <Link href="/creator">
+                <Button variant="ghost" size="sm" className="text-zinc-600 hover:text-zinc-900">
+                  <LayoutDashboard className="mr-1.5 h-4 w-4" />
+                  Creator
                 </Button>
               </Link>
             )}

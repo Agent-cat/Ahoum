@@ -2,13 +2,12 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { api } from "@/src/lib/api";
 import { useAuth } from "@/src/auth";
 import { Badge } from "@/src/components/ui/badge";
 import { Button } from "@/src/components/ui/button";
 import { Spinner } from "@/src/components/ui/spinner";
-import { Calendar, Users, Ticket } from "lucide-react";
+import { Calendar, Users, CheckCircle2 } from "lucide-react";
 
 type Session = {
   id: number;
@@ -20,12 +19,16 @@ type Session = {
   creator_name: string;
 };
 
+type Booking = {
+  id: number;
+  session: number;
+};
+
 export default function SessionsPage() {
   const [sessions, setSessions] = useState<Session[] | null>(null);
+  const [bookedIds, setBookedIds] = useState<Set<number>>(new Set());
   const [error, setError] = useState("");
-  const [bookingId, setBookingId] = useState<number | null>(null);
   const { user } = useAuth();
-  const router = useRouter();
 
   useEffect(() => {
     fetch("/api/sessions/")
@@ -34,27 +37,14 @@ export default function SessionsPage() {
       .catch((e) => setError(String(e.message || e)));
   }, []);
 
-  async function bookSession(id: number) {
-    if (!user) {
-      router.push("/login");
-      return;
-    }
-    setBookingId(id);
-    try {
-      await api(`/sessions/${id}/book/`, { method: "POST" });
-      setSessions((prev) =>
-        prev
-          ? prev.map((s) =>
-              s.id === id ? { ...s, seats_left: s.seats_left - 1 } : s
-            )
-          : prev
-      );
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setBookingId(null);
-    }
-  }
+  useEffect(() => {
+    if (!user) return;
+    api("/bookings/")
+      .then((data: Booking[]) => {
+        setBookedIds(new Set(data.map((b) => b.session)));
+      })
+      .catch(() => {});
+  }, [user]);
 
   if (error)
     return (
@@ -93,7 +83,7 @@ export default function SessionsPage() {
       <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {sessions.map((s) => {
           const isFull = s.seats_left === 0;
-          const isBooking = bookingId === s.id;
+          const isBooked = bookedIds.has(s.id);
 
           return (
             <div
@@ -102,7 +92,7 @@ export default function SessionsPage() {
             >
               <Link href={`/sessions/${s.id}`} className="flex-1 p-5">
                 <div className="mb-3 flex items-start justify-between">
-                  <h3 className="text-lg font-semibold text-zinc-800 hover:text-indigo-600">
+                  <h3 className="text-lg font-semibold text-zinc-800 group-hover:text-indigo-600">
                     {s.title}
                   </h3>
                   <Badge
@@ -138,29 +128,22 @@ export default function SessionsPage() {
               </Link>
 
               <div className="border-t border-zinc-100 bg-zinc-50/50 p-4">
-                {isFull ? (
-                  <Button variant="outline" className="w-full" disabled>
-                    Fully Booked
-                  </Button>
-                ) : (
-                  <Button
-                    className="w-full"
-                    disabled={isBooking}
-                    onClick={() => bookSession(s.id)}
-                  >
-                    {isBooking ? (
-                      <>
-                        <Spinner className="mr-2 h-4 w-4" />
-                        Booking...
-                      </>
-                    ) : (
-                      <>
-                        <Ticket className="mr-2 h-4 w-4" />
-                        Book Now
-                      </>
-                    )}
-                  </Button>
-                )}
+                <Link href={`/sessions/${s.id}`}>
+                  {isBooked ? (
+                    <Button variant="outline" className="w-full border-green-200 bg-green-50 text-green-700 hover:bg-green-50">
+                      <CheckCircle2 className="mr-2 h-4 w-4" />
+                      Booked
+                    </Button>
+                  ) : isFull ? (
+                    <Button variant="outline" className="w-full" disabled>
+                      Fully Booked
+                    </Button>
+                  ) : (
+                    <Button className="w-full">
+                      View & Book
+                    </Button>
+                  )}
+                </Link>
               </div>
             </div>
           );

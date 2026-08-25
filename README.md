@@ -1,130 +1,124 @@
-# Ahoum — Sessions Marketplace
+# Sessions Marketplace
 
-A compact sessions marketplace: users authenticate with GitHub OAuth (JWTs issued by
-the backend), browse sessions, and book them; creators create and manage their own
-sessions. Booking is capacity-safe under concurrent access.
+A compact sessions marketplace where users browse and book sessions, and creators manage their own. Built with Next.js, Django, PostgreSQL, and Docker.
 
-## Stack
+## What it does
 
-| Layer     | Tech                                                        |
-|-----------|-------------------------------------------------------------|
-| Frontend  | Next.js 16 (App Router, client-side pages), TypeScript      |
-| Backend   | Django 5 + Django REST Framework, SimpleJWT                 |
-| Database  | PostgreSQL 16                                               |
-| Auth      | GitHub OAuth (code exchange on the backend) -> JWT pair     |
-| Infra     | Docker Compose: `db`, `backend`, `frontend`, `nginx`        |
+- **Landing page** at `/` — just a clean hero with a "Browse Sessions" call to action
+- **Sessions page** at `/sessions` — card grid of all available sessions. Shows "Booked" if you already registered, "Fully Booked" if full, or "View & Book" otherwise
+- **Session detail** at `/sessions/[id]` — full info with a "Book Now" button that pops a confirmation dialog, then toasts success
+- **My Bookings** at `/bookings` — your upcoming and past sessions, with a "Cancel Booking" option (confirmation + toast)
+- **Creator Dashboard** at `/creator` — create, edit, delete your sessions. Becomes available once you switch to creator role
+- **Profile** at `/profile` — update your display name
+- **Sign in** at `/login` — GitHub OAuth, Google OAuth, or dev login (if enabled)
 
-## Quick start
+### Available roles
+
+| Role | What they can do |
+|------|-----------------|
+| **User** | Browse sessions, book sessions, view/cancel bookings, edit profile |
+| **Creator** | Everything a user can do, PLUS create/edit/delete sessions, view booking counts on their sessions |
+
+Any user can promote themselves to creator from the Creator dashboard. You can't switch back to user if you still own sessions.
+
+## Getting started
 
 ```bash
-cp .env.example .env          # adjust values if you like
+cp .env.example .env
 docker compose up --build
 ```
 
-Then open **http://localhost/**
+Then open http://localhost/
 
-- The catalog (`/`) works without an account.
-- Sign in at `/login`:
-  - **Continue with GitHub** — requires `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`
-    in `.env`. Create an OAuth app at https://github.com/settings/developers with
-    callback URL `http://localhost/auth/callback`.
-  - **Development login** — enabled when `DEV_LOGIN_ENABLED=1`; lets you create
-    `user` or `creator` accounts without GitHub credentials.
+### Setting up OAuth
 
-### Run the tests
+**GitHub:**
+1. Go to https://github.com/settings/developers
+2. Create a new OAuth app
+3. Homepage URL: `http://localhost/`
+4. Authorization callback: `http://localhost/auth/callback`
+5. Put the Client ID and Client Secret in `.env`
+
+**Google:**
+1. Go to https://console.cloud.google.com/apis/credentials
+2. Create an OAuth 2.0 Client ID (Web application)
+3. Authorized redirect URI: `http://localhost/auth/google/callback`
+4. Put the Client ID and Client Secret in `.env`
+
+Or just use dev login — set `DEV_LOGIN_ENABLED=1` in `.env` and you can sign in with any username.
+
+### Running tests
 
 ```bash
-# full suite incl. authorization/error cases (needs Postgres, so run in Docker)
 docker compose exec backend uv run python manage.py test catalog
 
-# standalone race-condition script against the running stack
+# Race condition test (12 concurrent bookings on a 3-seat session)
 docker compose exec backend uv run python scripts/race_check.py http://localhost:8000/api
 ```
-
-Expected race output: 12 simultaneous booking attempts on a 3-seat session end with
-exactly `3 × 201` and `9 × 409`.
 
 ## Architecture
 
 ```
-browser ──> nginx ──┬── /api/*  ──> Django (gunicorn :8000) ──> PostgreSQL
-                    └── /*      ──> Next.js (:3000)
+browser → nginx → /api/* → Django (gunicorn :8000) → PostgreSQL
+                    /*   → Next.js (:3000)
 ```
 
-- **Backend** (`backend/`, managed with [uv](https://docs.astral.sh/uv/)):
-  - `accounts` — custom `User` model (`role`: `user|creator`), GitHub OAuth code
-    exchange, JWT issuance/refresh, profile endpoint `/api/me/`.
-  - `catalog` — `Session` and `Booking` models, public catalog/detail,
-    creator-only CRUD scoped to the owner, booking endpoint with concurrency-safe
-    capacity enforcement, `/api/my/sessions/` (with booking counts),
-    `/api/bookings/` (upcoming/past).
-- **Frontend** (`frontend/`): client-side React pages — catalog, session detail +
-  booking, my bookings, creator dashboard, profile, OAuth callback. The SPA keeps
-  JWTs in `localStorage` and transparently refreshes expired access tokens.
-- **nginx**: single entry point; routes `/api` (and `/admin`) to Django, everything
-  else to Next.js.
+Four Docker services: `db` (Postgres), `backend` (Django), `frontend` (Next.js), `nginx` (reverse proxy).
 
-### Key endpoints
+### How booking works
 
-| Method | Path                     | Access                        |
-|--------|--------------------------|-------------------------------|
-| POST   | `/api/auth/github/`      | public (OAuth code exchange)  |
-| POST   | `/api/auth/refresh/`     | public (refresh token)        |
-| GET/PATCH | `/api/me/`            | authenticated                 |
-| GET    | `/api/sessions/`         | public                        |
-| POST   | `/api/sessions/`         | creator only                  |
-| PATCH/DELETE | `/api/sessions/{id}/` | owning creator only       |
-| POST   | `/api/sessions/{id}/book/` | authenticated non-owner   |
-| GET    | `/api/my/sessions/`      | creator only                  |
-| GET    | `/api/bookings/`         | authenticated                 |
+When you click "Book Now", the backend:
+1. Locks the session row (`SELECT FOR UPDATE`)
+2. Checks the session hasn't started yet
+3. Tries to insert a booking (unique constraint on `session + user` prevents double-booking)
+4. Verifies total bookings don't exceed capacity
+5. Returns success
 
-### How booking stays correct
+This is safe even with 12 people clicking at the same time on the last seat.
 
-All inserts into `booking` serialize on a `SELECT … FOR UPDATE` row lock of the
-session row, then check `bookings.count() < capacity` before inserting. A partial
-unique constraint `(session, user)` makes double-booking impossible at the database
-level even if application logic were bypassed. Bookings for started sessions are
-rejected. Details and rationale: `DECISIONS.md`.
+## API endpoints
 
-## Data persistence
+| Method | Path | Access |
+|--------|------|--------|
+| GET | `/api/auth/github/url/` | public |
+| POST | `/api/auth/github/` | public |
+| GET | `/api/auth/google/url/` | public |
+| POST | `/api/auth/google/` | public |
+| POST | `/api/auth/dev-login/` | public (dev only) |
+| POST | `/api/auth/refresh/` | public |
+| GET/PATCH | `/api/me/` | authenticated |
+| GET | `/api/sessions/` | public |
+| POST | `/api/sessions/` | creator |
+| PATCH/DELETE | `/api/sessions/{id}/` | owning creator |
+| POST | `/api/sessions/{id}/book/` | authenticated |
+| POST | `/api/sessions/{id}/unregister/` | authenticated |
+| GET | `/api/my/sessions/` | creator |
+| GET | `/api/bookings/` | authenticated |
 
-PostgreSQL data lives in the named volume `pgdata` (`/var/lib/postgresql/data`
-inside the `db` container). Recreating/upgrading/restarting app containers never
-touches it:
+## Tech stack
 
-```bash
-docker compose down            # stops containers, volume survives
-docker compose up -d           # data is still there
-docker compose down -v         # ONLY this deletes data
-```
-
-Migrations run automatically on backend startup (`manage.py migrate` before gunicorn).
-
-## Project layout
-
-```
-backend/    Django project (uv-managed): config/, accounts/, catalog/, scripts/
-frontend/   Next.js app (app router)
-nginx/      reverse proxy config
-.env.example
-PROMPT_LOG.md  DECISIONS.md  DEBUGGING.md
-```
+| Layer | Tech |
+|-------|------|
+| Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS, shadcn/ui, lucide-react, sonner (toasts) |
+| Backend | Django 5, Django REST Framework, SimpleJWT |
+| Database | PostgreSQL 16 |
+| Auth | GitHub OAuth + Google OAuth + dev login → JWT pair |
+| Infra | Docker Compose with nginx reverse proxy |
 
 ## Known limitations
 
-- JWTs are stored in `localStorage` (XSS-exposed); httpOnly cookies would be safer.
-- No pagination on list endpoints.
-- Creators can't cancel/edit capacity below current bookings (API rejects capacity
-  edits only implicitly — lowering capacity below bookings isn't blocked).
-- No email verification / password flows (OAuth + dev login only).
-- OAuth state uses a signed token rather than server-side session storage.
-- No CI pipeline; tests must be run through Docker.
+- JWTs in localStorage (XSS-exposed, should be httpOnly cookies for production)
+- No pagination on list endpoints
+- No email verification or password reset
+- OAuth state is signed but not stored server-side
+- No CI pipeline — tests run through Docker
+- Creators can't lower capacity below existing bookings
 
-## With one more day
+## What I'd do with more time
 
-1. httpOnly-cookie token delivery + CSRF handling.
-2. Booking cancellation and waitlists; capacity-decrease validation.
-3. Pagination + filtering (search by title, upcoming-only toggle) on the catalog.
-4. CI (GitHub Actions) running the Django suite against a Postgres service.
-5. End-to-end browser test (Playwright) covering OAuth mock and booking flow.
-6. Rate limiting on auth endpoints.
+1. httpOnly cookie token delivery + CSRF
+2. Waitlists for full sessions
+3. Search and filtering on the catalog
+4. GitHub Actions CI
+5. Playwright end-to-end tests
+6. Rate limiting on auth endpoints

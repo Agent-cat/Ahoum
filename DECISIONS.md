@@ -1,118 +1,91 @@
 # DECISIONS.md
 
-At least three non-trivial decisions, each with the ambiguity, options, choice,
-and trade-offs. (Requirements forced by the brief — Django/DRF/Postgres/Docker,
-OAuth+JWT — are not counted.)
+Engineering decisions that shaped this project. Not just "what" but "why" and "what else we considered."
 
 ---
 
-## 1. How to enforce capacity under concurrency
+## 1. How to handle concurrent bookings
 
-**Problem.** "One seat left, two users book simultaneously" must never oversell.
-Where does the invariant live: DB constraint, row lock, optimistic counter,
-trigger?
+**The problem:** Two people click "Book Now" on the same session at the same time. Only one should get through. The session has a capacity, and we can't oversell it.
 
-**Options considered**
+**Options we looked at:**
 
-1. *Optimistic update*: `UPDATE … SET seats_taken = seats_taken + 1 WHERE id = X
-   AND seats_taken < capacity` guarded counter column.
-   - Fast, but requires denormalizing a counter that can drift from `booking`
-     rows; every code path touching bookings must maintain it.
-2. *DB trigger / exclusion constraint*: enforce capacity entirely in Postgres.
-   - Strongest guarantee, but logic becomes invisible to Python, hard to test in
-     DRF tests, and triggers are easy for future maintainers to miss.
-3. **Row lock + check inside a transaction (chosen)**: open a transaction,
-   `SELECT … FOR UPDATE` the session row, re-check `starts_at`, insert the
-   booking, verify `count <= capacity`.
-4. *Advisory locks* keyed by session id — equivalent serialization with more
-   moving parts and no link between lock lifetime and the transaction.
+1. **Optimistic update** — `UPDATE seats_taken + 1 WHERE seats_taken < capacity`. Fast, but the counter can drift from actual booking rows. Every code path touching bookings has to maintain it correctly.
+2. **Database trigger** — enforce capacity entirely in Postgres. Strongest guarantee, but the logic is hidden from Python, hard to test in DRF tests, and easy for future maintainers to miss.
+3. **Row lock + check in a transaction** — lock the session row, count existing bookings, insert if there's room.
+4. **Advisory locks** — same serialization, more moving parts, no natural link between lock lifetime and the transaction.
 
-**Choice:** option 3, plus a DB-level partial unique constraint
-`(session, user)` so double-booking is impossible even if two requests from the
-same user race past the existence check (the second insert raises
-`IntegrityError`, mapped to `409`).
+**What we chose:** Option 3, plus a partial unique constraint on `(session, user)` at the database level. So even if two requests from the same user somehow race past the existence check, the second insert hits an IntegrityError and returns 409.
 
-**Trade-offs.** The capacity check itself is application-level; its correctness
-depends on every write path taking the session-row lock first. I accepted that
-because bookings are low-frequency writes, contention on one row is negligible,
-and the invariant is trivially auditable (`catalog/views.py::book`). The unique
-constraint covers the duplicate-user case purely at the database level. Verified
-by `catalog/test_concurrency.py` (12 threads, capacity 3 → exactly 3 successes)
-and `scripts/race_check.py`.
+**Why:** Bookings are low-frequency writes. Contention on one row is negligible. The invariant is trivially auditable in `catalog/views.py::book`. And the unique constraint is a safety net that doesn't depend on application code being perfect.
+
+**Verified by:** `catalog/test_concurrency.py` — 12 threads try to book a 3-seat session. Exactly 3 succeed, 9 get 409. Also verified with `scripts/race_check.py` against the live stack.
 
 ---
 
-## 2. OAuth flow shape: who talks to GitHub
+## 2. OAuth flow: where does the code exchange happen?
 
-**Problem.** Where does the authorization `code` get exchanged for a token:
-backend redirect flow or frontend-mediated exchange?
+**The problem:** GitHub gives you an authorization code. Who trades it for a token — the backend directly, or does the frontend pass it along?
 
-**Options considered**
+**Options:**
 
-1. **Frontend receives `?code=`, POSTs it to the backend; backend exchanges it
-   (chosen).**
-2. Classic backend redirect flow: backend `/auth/github/callback` endpoint
-   redirects to the frontend with JWTs in the URL fragment.
+1. **Backend redirect flow** — GitHub redirects to `/auth/callback` on the backend, backend exchanges the code, redirects to the frontend with JWTs in the URL. Simple, but tokens end up in URLs (leak via referrer, browser history).
+2. **Frontend receives code, sends to backend** — frontend catches `?code=`, POSTs it to `/api/auth/github/`, backend exchanges it and returns JWTs as JSON. No tokens in URLs.
 
-**Choice:** option 1. One backend endpoint (`POST /api/auth/github/`) owns the
-client secret and returns the JWT pair as JSON, exactly like every other auth
-endpoint. No secret ever near the browser, no tokens in URLs (fragments leak via
-history/referrer), and SPA routing stays trivial.
+**What we chose:** Option 2. The backend owns the client secret (never near the browser). Tokens come back as JSON, stored in localStorage. SPA routing stays simple.
 
-**Trade-offs.** The `state` parameter needs round-tripping through the frontend;
-I sign a random token with Django's secret (`django.core.signing`, 10-min TTL)
-so the backend can verify it without server-side storage. CSRF risk is lower
-than the implicit flow since the exchange still happens server-side, but state
-validation only happens when the frontend passes it — documented limitation.
+**The tradeoff:** The `state` parameter needs to round-trip through the frontend. We sign it with Django's `django.core.signing` (10-min TTL) so the backend can verify without server-side storage. CSRF risk is lower than the implicit flow since the exchange still happens server-side. It's not perfect — state validation only happens when the frontend passes it — but it's good enough for this app.
+
+We did the exact same thing for Google OAuth. Same flow, same tradeoffs, same state signing.
 
 ---
 
-## 3. Roles: single switchable role field vs. richer creator model
+## 3. Roles: simple column vs. separate model
 
-**Problem.** Users and Creators share almost everything (auth, profile); how much
-structure should separate them?
+**The problem:** Users and creators share auth, profile, and most features. How much structure do we need to separate them?
 
-**Options considered**
+**Options:**
 
-1. Separate `CreatorProfile` model + permission lookup.
-2. Role choices on the custom User (chosen), permissions checked server-side.
-3. Django Groups/permissions framework.
+1. **Separate `CreatorProfile` model** with a permission lookup. More structure, harder to migrate later.
+2. **Single `role` column on the User model** with `TextChoices` (`user`/`creator`). Permission checks are simple column lookups.
+3. **Django Groups/permissions framework** — more infrastructure than we need for a two-role system.
 
-**Choice:** option 2. A `role` column with `TextChoices`, an `IsCreator`
-permission class, and object-level ownership checks. Any authenticated user can
-promote themselves to creator (demotion blocked while they own sessions).
+**What we chose:** Option 2. A `role` column, an `IsCreator` permission class, and object-level ownership checks. Any authenticated user can promote themselves to creator. Demotion is blocked while they still own sessions.
 
-**Trade-offs.** Least structure, easiest to reason about and test; if monetized
-"verified creators" were needed later, migration to a profile model would touch
-every permission check. Rejected Groups because a per-request group lookup buys
-nothing over a single indexed column here, and role semantics are product logic,
-not infrastructure.
+**Why not Groups?** A per-request group lookup buys nothing over a single indexed column. Role semantics are product logic, not infrastructure. And if we ever need "verified creators" or tiers, migrating from a column to a profile model is a well-understood Django pattern.
 
 ---
 
 ## 4. Dev login endpoint behind an env flag
 
-**Problem.** Graders/reviewers may not set up a GitHub OAuth app within review
-time, making the app un-demoable.
+**The problem:** If someone doesn't have GitHub/Google OAuth set up, the app is un-demoable.
 
-**Choice:** `POST /api/auth/dev-login/ {username, role}` creates/updates a local
-account and issues real JWTs — enabled only when `DEV_LOGIN_ENABLED=1`
-(defaults off; `.env.example` ships it on with a warning).
+**What we chose:** `POST /api/auth/dev-login/ {username, role}` — creates or updates a local account and issues real JWTs. Only enabled when `DEV_LOGIN_ENABLED=1` (defaults off, `.env.example` ships it on with a warning).
 
-**Trade-offs.** An extra auth surface that must never ship enabled; mitigated by
-defaulting to disabled and returning 404 otherwise. Accepted because a broken
-demo flow costs more in evaluation than a flag-guarded dev endpoint.
+**The risk:** An extra auth surface that must never ship enabled. Mitigated by defaulting to disabled and returning 404 otherwise. We accepted this because a broken demo costs more in evaluation than a flag-gated dev endpoint.
 
 ---
 
-## 5. Frontend token storage: localStorage vs httpOnly cookies
+## 5. localStorage for JWTs vs. httpOnly cookies
 
-**Problem.** Where do the access/refresh JWTs live in the browser?
+**The problem:** Where do access/refresh tokens live in the browser?
 
-**Choice:** `localStorage` with transparent refresh-on-401 in the fetch wrapper.
-Simple, works across nginx-routed same-origin calls, no CSRF machinery needed.
+**What we chose:** localStorage with transparent refresh-on-401 in the fetch wrapper. Simple, works across same-origin calls through nginx, no CSRF machinery needed.
 
-**Trade-offs.** Vulnerable to XSS; an httpOnly-cookie design (backend sets
-cookies, SPA never touches tokens) was deferred — noted in README limitations.
-For a scoped assignment app without third-party scripts this is a conscious,
-documented risk rather than an oversight.
+**Why not httpOnly cookies?** They're better (immune to XSS), but they require backend sets cookies, the SPA never touches tokens, and you need CSRF handling. For a scoped assignment app without third-party scripts, this is a conscious, documented risk rather than an oversight. We'd absolutely change this for production.
+
+---
+
+## 6. Frontend UI: Tailwind + shadcn/ui vs. pre-built component library
+
+**The problem:** The frontend needed a consistent look. Options ranged from full custom CSS to a component library.
+
+**Options:**
+
+1. **Full custom CSS** — maximum control, but slow to iterate and easy to end up inconsistent.
+2. **MUI or Chakra** — batteries-included, but heavy bundle sizes and opinionated styling.
+3. **Tailwind + shadcn/ui** — utility-first CSS with composable components, lightweight, full control.
+
+**What we chose:** Option 3. Tailwind for utility classes, shadcn/ui for pre-built components (Button, Card, Badge, Input, Dialog), lucide-react for icons, sonner for toasts. Indigo as the accent color.
+
+**Why:** Fast to iterate. Components are copy-pasted into the project (not a dependency), so we can customize freely. The bundle stays small. And the design system is consistent because it all flows from the same Tailwind theme.

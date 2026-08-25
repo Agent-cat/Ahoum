@@ -58,6 +58,24 @@ class SessionViewSet(viewsets.ModelViewSet):
         data["seats_left"] = max(locked.capacity - locked.bookings.count(), 0)
         return Response(data, status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
+    def unregister(self, request, pk=None):
+        session = Session.objects.filter(pk=pk).first()
+        if session is None:
+            return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        with transaction.atomic():
+            locked = Session.objects.select_for_update().get(pk=session.pk)
+            deleted, _ = Booking.objects.filter(session=locked, user=request.user).delete()
+
+            if deleted == 0:
+                return Response(
+                    {"detail": "You are not booked for this session."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        return Response({"detail": "Unregistered successfully.", "seats_left": max(locked.capacity - locked.bookings.count(), 0)})
+
 
 class MySessionsView(APIView):
     permission_classes = [IsAuthenticated]
