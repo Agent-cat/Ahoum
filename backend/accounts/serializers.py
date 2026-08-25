@@ -22,4 +22,7 @@ class GitHubCodeSerializer(serializers.Serializer):
 
 class DevLoginSerializer(serializers.Serializer):
     username = serializers.CharField(min_length=1, max_length=150)
-    role = serializers.ChoiceField(choices=[User.Roles.USER, User.Roles.CREATOR], default=User.Roles.USER)
+    role = serializers.ChoiceField(
+        choices=[User.Roles.USER, User.Roles.CREATOR],
+        default=User.Roles.USER,
+    )

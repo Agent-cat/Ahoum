@@ -162,3 +162,26 @@ def dev_login(request):
 
 
 token_refresh = _TokenRefreshView.as_view()
+
+
+@api_view(["GET", "PATCH"])
+def me(request):
+    serializer = UserSerializer(request.user)
+    if request.method == "GET":
+        return Response(serializer.data)
+
+    data = request.data.copy()
+    new_role = data.get("role")
+    if new_role is not None:
+        if new_role not in User.Roles.values:
+            return Response({"role": ["Role must be 'user' or 'creator'."]}, status=status.HTTP_400_BAD_REQUEST)
+        if request.user.role == User.Roles.CREATOR and new_role == User.Roles.USER:
+            if request.user.sessions.exists():
+                return Response(
+                    {"role": ["You still own sessions; delete them before switching back to a user."]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+    serializer = UserSerializer(request.user, data=data, partial=True)
+    serializer.is_valid(raise_exception=True)
+    serializer.save()
+    return Response(serializer.data)
