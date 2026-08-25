@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useAuth } from "@/auth";
+import { useAuth } from "@/src/auth";
 
 export function Nav() {
   const { user, ready, logout } = useAuth();

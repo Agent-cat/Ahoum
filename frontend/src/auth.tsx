@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { clearAuth, currentUser, setOnUnauthorized, type User } from "./api";
+import { clearAuth, currentUser, setOnUnauthorized, type User } from "./lib/api";
 
 type AuthCtx = {
   user: User | null;
