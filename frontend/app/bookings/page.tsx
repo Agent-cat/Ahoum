@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/src/lib/api";
 import { useAuth } from "@/src/auth";
+import { Card, CardContent, CardHeader, CardTitle } from "@/src/components/ui/card";
+import { Button } from "@/src/components/ui/button";
+import { Spinner } from "@/src/components/ui/spinner";
+import { Calendar, Clock, ArrowRight, Ticket } from "lucide-react";
 
 type Booking = {
   id: number;
@@ -26,44 +30,99 @@ export default function BookingsPage() {
       .catch((e) => setError(e.message));
   }, [ready, user]);
 
-  if (!ready) return null;
+  if (!ready)
+    return (
+      <div className="flex min-h-[400px] items-center justify-center">
+        <Spinner className="h-8 w-8 text-zinc-400" />
+      </div>
+    );
+
   if (!user)
     return (
-      <p>
-        <Link href="/login">Sign in</Link> to see your bookings.
-      </p>
+      <div className="flex min-h-[400px] flex-col items-center justify-center gap-4 text-center">
+        <Ticket className="h-12 w-12 text-zinc-300" />
+        <div>
+          <h2 className="text-lg font-semibold text-zinc-900">Sign in required</h2>
+          <p className="mt-1 text-sm text-zinc-500">Sign in to view your bookings.</p>
+        </div>
+        <Link href="/login">
+          <Button>Sign in</Button>
+        </Link>
+      </div>
     );
 
   const upcoming = (bookings ?? []).filter((b) => !b.is_past);
   const past = (bookings ?? []).filter((b) => b.is_past);
 
   return (
-    <div>
-      <h1>My bookings</h1>
-      {error && <p className="error">{error}</p>}
-      {!bookings && !error && <p>Loading…</p>}
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-2xl font-bold text-zinc-900">My bookings</h1>
+        <p className="text-sm text-zinc-500">Manage your upcoming and past sessions</p>
+      </div>
 
-      <h2>Upcoming</h2>
-      <BookingList items={upcoming} empty="No upcoming bookings." />
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
+      )}
 
-      <h2>Past</h2>
-      <BookingList items={past} empty="Nothing here yet." />
+      {!bookings && !error && (
+        <div className="flex min-h-[200px] items-center justify-center">
+          <Spinner className="h-8 w-8 text-zinc-400" />
+        </div>
+      )}
+
+      <div className="space-y-3">
+        <h2 className="flex items-center gap-2 text-lg font-semibold text-zinc-900">
+          <Calendar className="h-5 w-5" />
+          Upcoming
+        </h2>
+        <BookingList items={upcoming} empty="No upcoming bookings." />
+      </div>
+
+      <div className="space-y-3">
+        <h2 className="flex items-center gap-2 text-lg font-semibold text-zinc-900">
+          <Clock className="h-5 w-5" />
+          Past
+        </h2>
+        <BookingList items={past} empty="Nothing here yet." />
+      </div>
     </div>
   );
 }
 
 function BookingList({ items, empty }: { items: Booking[]; empty: string }) {
-  if (items.length === 0) return <p className="muted">{empty}</p>;
+  if (items.length === 0)
+    return (
+      <div className="rounded-lg border border-dashed border-zinc-200 bg-zinc-50 p-8 text-center text-sm text-zinc-500">
+        {empty}
+      </div>
+    );
+
   return (
-    <ul className="cards">
+    <div className="grid gap-3 sm:grid-cols-2">
       {items.map((b) => (
-        <li key={b.id} className="card">
-          <Link href={`/sessions/${b.session}`}>
-            <strong>{b.title}</strong>
-          </Link>
-          <p>{new Date(b.starts_at).toLocaleString()}</p>
-        </li>
+        <Link key={b.id} href={`/sessions/${b.session}`} className="group block">
+          <Card className="transition-shadow hover:shadow-md">
+            <CardHeader className="pb-2">
+              <CardTitle className="group-hover:text-zinc-700">{b.title}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm text-zinc-600">
+                  <Calendar className="h-4 w-4" />
+                  {new Date(b.starts_at).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </div>
+                <ArrowRight className="h-4 w-4 text-zinc-400 group-hover:text-zinc-900" />
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
       ))}
-    </ul>
+    </div>
   );
 }

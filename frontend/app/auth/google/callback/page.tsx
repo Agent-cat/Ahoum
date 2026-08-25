@@ -6,7 +6,7 @@ import { api, saveAuth } from "@/src/lib/api";
 import { Spinner } from "@/src/components/ui/spinner";
 import { AlertCircle } from "lucide-react";
 
-function Callback() {
+function GoogleCallback() {
   const params = useSearchParams();
   const router = useRouter();
   const [error, setError] = useState("");
@@ -18,7 +18,7 @@ function Callback() {
 
     if (oauthError) {
       setError(
-        `GitHub sign-in failed: ${oauthError === "access_denied" ? "you cancelled the authorization" : oauthError}.`
+        `Google sign-in failed: ${oauthError === "access_denied" ? "you cancelled the authorization" : oauthError}.`
       );
       return;
     }
@@ -27,7 +27,7 @@ function Callback() {
       return;
     }
 
-    api("/auth/github/", { method: "POST", body: { code, state: state ?? "" } })
+    api("/auth/google/", { method: "POST", body: { code, state: state ?? "" } })
       .then((data) => {
         saveAuth(data);
         router.replace("/");
@@ -55,7 +55,7 @@ function Callback() {
         ) : (
           <div className="flex flex-col items-center gap-3 text-zinc-500">
             <Spinner className="h-8 w-8" />
-            <p>Completing your GitHub sign-in...</p>
+            <p>Completing your Google sign-in...</p>
           </div>
         )}
       </div>
@@ -63,7 +63,7 @@ function Callback() {
   );
 }
 
-export default function OAuthCallbackPage() {
+export default function GoogleCallbackPage() {
   return (
     <Suspense
       fallback={
@@ -72,7 +72,7 @@ export default function OAuthCallbackPage() {
         </div>
       }
     >
-      <Callback />
+      <GoogleCallback />
     </Suspense>
   );
 }

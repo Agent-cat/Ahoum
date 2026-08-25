@@ -26,3 +26,8 @@ class DevLoginSerializer(serializers.Serializer):
         choices=[User.Roles.USER, User.Roles.CREATOR],
         default=User.Roles.USER,
     )
+
+
+class GoogleCodeSerializer(serializers.Serializer):
+    code = serializers.CharField(min_length=1)
+    state = serializers.CharField(required=False, allow_blank=True)

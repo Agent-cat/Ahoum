@@ -11,6 +11,7 @@ class User(AbstractUser):
     display_name = models.CharField(max_length=150, blank=True, default="")
     role = models.CharField(max_length=10, choices=Roles.choices, default=Roles.USER)
     github_id = models.BigIntegerField(null=True, blank=True, unique=True)
+    google_id = models.CharField(max_length=64, null=True, blank=True, unique=True)
     avatar_url = models.URLField(blank=True, default="")
 
     def __str__(self):
