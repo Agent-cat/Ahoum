@@ -1,14 +1,13 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { api, saveAuth } from "@/src/lib/api";
 import { Spinner } from "@/src/components/ui/spinner";
 import { AlertCircle } from "lucide-react";
 
 function GoogleCallback() {
   const params = useSearchParams();
-  const router = useRouter();
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -30,31 +29,31 @@ function GoogleCallback() {
     api("/auth/google/", { method: "POST", body: { code, state: state ?? "" } })
       .then((data) => {
         saveAuth(data);
-        router.replace("/");
+        window.location.href = "/";
       })
       .catch((e) => setError(e.message || "Sign-in failed."));
-  }, [params, router]);
+  }, [params]);
 
   return (
-    <div className="flex min-h-[calc(100vh-200px)] items-center justify-center">
-      <div className="w-full max-w-md space-y-4">
-        <h1 className="text-center text-2xl font-bold text-zinc-900">Signing you in...</h1>
+    <div className="flex flex-1 items-center justify-center px-4">
+      <div className="w-full max-w-sm space-y-4 text-center">
+        <h1 className="text-2xl font-bold tracking-tight text-zinc-800">Signing you in...</h1>
         {error ? (
-          <div className="space-y-3 rounded-lg border border-red-200 bg-red-50 p-4">
-            <div className="flex items-center gap-2 text-sm text-red-700">
+          <div className="space-y-3 rounded-2xl border border-red-200 bg-red-50 p-5">
+            <div className="flex items-center justify-center gap-2 text-sm text-red-600">
               <AlertCircle className="h-4 w-4 shrink-0" />
               <span>{error}</span>
             </div>
             <a
               href="/login"
-              className="block text-center text-sm font-medium text-zinc-900 underline underline-offset-4 hover:text-zinc-700"
+              className="inline-block text-sm font-medium text-indigo-600 underline underline-offset-4 hover:text-indigo-700"
             >
               Back to sign in
             </a>
           </div>
         ) : (
-          <div className="flex flex-col items-center gap-3 text-zinc-500">
-            <Spinner className="h-8 w-8" />
+          <div className="flex flex-col items-center gap-3 py-8 text-zinc-500">
+            <Spinner className="h-8 w-8 text-indigo-400" />
             <p>Completing your Google sign-in...</p>
           </div>
         )}
@@ -67,8 +66,8 @@ export default function GoogleCallbackPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-[calc(100vh-200px)] items-center justify-center">
-          <Spinner className="h-8 w-8 text-zinc-400" />
+        <div className="flex flex-1 items-center justify-center">
+          <Spinner className="h-8 w-8 text-indigo-400" />
         </div>
       }
     >

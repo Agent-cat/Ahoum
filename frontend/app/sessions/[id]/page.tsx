@@ -38,8 +38,8 @@ export default function SessionDetailPage() {
   }
 
   useEffect(() => {
-    if (ready) load();
-  }, [id, ready]);
+    load();
+  }, [id]);
 
   async function book() {
     setBusy(true);
@@ -61,10 +61,10 @@ export default function SessionDetailPage() {
     return (
       <div className="flex min-h-[400px] flex-col items-center justify-center gap-4">
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
-        <Link href="/">
+        <Link href="/sessions">
           <Button variant="ghost">
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to catalog
+            Back to sessions
           </Button>
         </Link>
       </div>
@@ -92,9 +92,9 @@ export default function SessionDetailPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <Link href="/" className="inline-flex items-center text-sm text-zinc-600 hover:text-zinc-900">
+      <Link href="/sessions" className="inline-flex items-center text-sm text-zinc-600 hover:text-zinc-900">
         <ArrowLeft className="mr-1 h-4 w-4" />
-        Back to catalog
+        Back to sessions
       </Link>
 
       <Card className="shadow-md">
@@ -135,10 +135,12 @@ export default function SessionDetailPage() {
               <Users className="h-5 w-5 text-zinc-600" />
               <div>
                 <p className="text-sm font-medium text-zinc-900">
-                  {session.seats_left} of {session.capacity} seats
+                  {session.capacity} total seats
                 </p>
                 <p className="text-xs text-zinc-600">
-                  {session.seats_left === 0 ? "No seats available" : `${session.seats_left} seats remaining`}
+                  {session.seats_left === 0
+                    ? "Fully booked"
+                    : `${session.seats_left} seat${session.seats_left !== 1 ? "s" : ""} remaining`}
                 </p>
               </div>
             </div>

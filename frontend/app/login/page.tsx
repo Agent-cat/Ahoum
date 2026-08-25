@@ -4,12 +4,11 @@ import { useEffect, useState } from "react";
 import { api, currentUser, saveAuth } from "@/src/lib/api";
 import { useAuth } from "@/src/auth";
 import { Button } from "@/src/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/src/components/ui/card";
 import { Input } from "@/src/components/ui/input";
 import { Label } from "@/src/components/ui/label";
 import { Separator } from "@/src/components/ui/separator";
 import { Spinner } from "@/src/components/ui/spinner";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Calendar } from "lucide-react";
 
 function GithubIcon({ className }: { className?: string }) {
   return (
@@ -86,101 +85,120 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex flex-1 items-center justify-center">
-      <Card className="w-full max-w-md shadow-md">
-        <CardHeader className="space-y-1 text-center">
-          <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
-          <CardDescription>Sign in to your account to continue</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {loading ? (
-            <div className="flex justify-center py-8">
-              <Spinner className="h-6 w-6 text-zinc-400" />
+    <div className="flex flex-1 items-center justify-center px-4">
+      <div className="w-full max-w-sm space-y-8">
+        <div className="space-y-2 text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-100">
+            <Calendar className="h-7 w-7 text-indigo-600" />
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight text-zinc-800">Welcome back</h1>
+          <p className="text-sm text-zinc-500">Sign in to your account to continue</p>
+        </div>
+
+        {loading ? (
+          <div className="flex justify-center py-8">
+            <Spinner className="h-6 w-6 text-zinc-300" />
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="space-y-3">
+              {githubUrl ? (
+                <a href={githubUrl} className="block">
+                  <Button
+                    variant="outline"
+                    className="w-full border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 hover:text-zinc-900"
+                    size="lg"
+                  >
+                    <GithubIcon className="mr-2 h-5 w-5" />
+                    Continue with GitHub
+                  </Button>
+                </a>
+              ) : (
+                <Button variant="outline" className="w-full" size="lg" disabled>
+                  GitHub unavailable
+                </Button>
+              )}
+
+              {googleUrl ? (
+                <a href={googleUrl} className="block">
+                  <Button
+                    variant="outline"
+                    className="w-full border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 hover:text-zinc-900"
+                    size="lg"
+                  >
+                    <GoogleIcon className="mr-2 h-5 w-5" />
+                    Continue with Google
+                  </Button>
+                </a>
+              ) : (
+                <Button variant="outline" className="w-full" size="lg" disabled>
+                  Google unavailable
+                </Button>
+              )}
             </div>
-          ) : (
-            <>
-              <div className="space-y-3">
-                {githubUrl ? (
-                  <a href={githubUrl} className="block">
-                    <Button variant="outline" className="w-full" size="lg">
-                      <GithubIcon className="mr-2 h-5 w-5" />
-                      Continue with GitHub
-                    </Button>
-                  </a>
-                ) : (
-                  <Button variant="outline" className="w-full" size="lg" disabled>
-                    GitHub unavailable
-                  </Button>
-                )}
 
-                {googleUrl ? (
-                  <a href={googleUrl} className="block">
-                    <Button variant="outline" className="w-full" size="lg">
-                      <GoogleIcon className="mr-2 h-5 w-5" />
-                      Continue with Google
-                    </Button>
-                  </a>
-                ) : (
-                  <Button variant="outline" className="w-full" size="lg" disabled>
-                    Google unavailable
-                  </Button>
-                )}
+            {oauthError && (
+              <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-600">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>{oauthError}</span>
               </div>
+            )}
 
-              {oauthError && (
-                <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                  <AlertCircle className="h-4 w-4 shrink-0" />
-                  <span>{oauthError}</span>
+            {devEnabled && (
+              <>
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <Separator className="bg-zinc-200" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-zinc-50 px-3 text-zinc-400">Dev Login</span>
+                  </div>
                 </div>
-              )}
 
-              {devEnabled && (
-                <>
-                  <div className="relative">
-                    <div className="absolute inset-0 flex items-center">
-                      <Separator />
-                    </div>
-                    <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-white px-2 text-zinc-500">Dev Login</span>
-                    </div>
+                <div className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-5">
+                  <p className="text-xs text-zinc-400">
+                    Only available when DEV_LOGIN_ENABLED=1
+                  </p>
+                  <div className="space-y-2">
+                    <Label htmlFor="username" className="text-zinc-600">
+                      Username
+                    </Label>
+                    <Input
+                      id="username"
+                      placeholder="Enter username"
+                      value={devUsername}
+                      onChange={(e) => setDevUsername(e.target.value)}
+                      className="border-zinc-200 bg-zinc-50 focus:bg-white"
+                    />
                   </div>
-
-                  <div className="space-y-3 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
-                    <p className="text-xs text-zinc-500">
-                      Only available when DEV_LOGIN_ENABLED=1
-                    </p>
-                    <div className="space-y-2">
-                      <Label htmlFor="username">Username</Label>
-                      <Input
-                        id="username"
-                        placeholder="Enter username"
-                        value={devUsername}
-                        onChange={(e) => setDevUsername(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="role">Role</Label>
-                      <select
-                        id="role"
-                        value={devRole}
-                        onChange={(e) => setDevRole(e.target.value as "user" | "creator")}
-                        className="flex h-9 w-full rounded-md border border-zinc-200 bg-white px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-950"
-                      >
-                        <option value="user">User</option>
-                        <option value="creator">Creator</option>
-                      </select>
-                    </div>
-                    <Button onClick={devLogin} disabled={busy || !devUsername.trim()} className="w-full">
-                      {busy ? <Spinner className="mr-2 h-4 w-4" /> : null}
-                      Sign in as Dev
-                    </Button>
+                  <div className="space-y-2">
+                    <Label htmlFor="role" className="text-zinc-600">
+                      Role
+                    </Label>
+                    <select
+                      id="role"
+                      value={devRole}
+                      onChange={(e) => setDevRole(e.target.value as "user" | "creator")}
+                      className="flex h-9 w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1 text-sm shadow-sm focus:border-indigo-300 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-300"
+                    >
+                      <option value="user">User</option>
+                      <option value="creator">Creator</option>
+                    </select>
                   </div>
-                </>
-              )}
-            </>
-          )}
-        </CardContent>
-      </Card>
+                  <Button
+                    onClick={devLogin}
+                    disabled={busy || !devUsername.trim()}
+                    className="w-full bg-indigo-600 hover:bg-indigo-700"
+                  >
+                    {busy ? <Spinner className="mr-2 h-4 w-4" /> : null}
+                    Sign in as Dev
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
